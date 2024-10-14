@@ -16,6 +16,7 @@
 
         <div class="alert alert-warning" role="alert">
             <span>If your image doesn't contain required metadata, add it yourself with exifdata. .\exiftool.exe -ProjectionType=equirectangular -UsePanoramaViewer=true file.jpeg</span>
+	</div>
 
         <form name="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
             <div class="form-group">
@@ -53,22 +54,40 @@
                 </div>
             </div>
 
-            <div class="form-group">
-                <label for="map" class="text-light">Map</label>
-                <div id="map" class="leaflet-container" style="max-width: 100%; height: 500px"></div>
-            </div>
-            <div class="form-group">
-                <label for="lat" class="text-light">Latitude</label>
-                <input type="text" id="lat" name="lat" placeholder="Latitude coordinates" class="form-control"
-                       required/>
-            </div>
-            <div class="form-control">
-                <label for="long" class="text-light">Longitude</label>
-                <input type="text" id="long" name="long" placeholder="Longitude coordinates" class="form-control"
-                       required/>
-            </div>
+	    <div class="form-group">
+	        <label for="map" class="text-light">Map</label>
+	        <div id="map" class="leaflet-container" style="max-width: 100%; height: 500px"></div>
+	    </div>
 
-            <button type="submit" class="ripple">UPLOAD</button>
+	    <div class="form-group">
+	        <label for="lat" class="text-light">Latitude</label>
+	        <input type="text" id="lat" name="lat" placeholder="Latitude coordinates" class="form-control" required />
+	    </div>
+
+	    <div class="form-group">
+ 	       <label for="long" class="text-light">Longitude</label>
+ 	       <input type="text" id="long" name="long" placeholder="Longitude coordinates" class="form-control" required />
+	    </div>
+
+	    <div class="form-group">
+ 	       <label for="head" class="text-light">Heading</label>
+ 	       <input type="text" id="head" name="head" 
+   	            placeholder="Degrees from north that the front of the photo was taken from" 
+   	            class="form-control" required />
+	    </div>
+
+	    <div class="form-group">
+ 	       <label for="place" class="text-light">Assigned Place</label>
+  	      <input type="text" id="place" name="place" 
+  	             placeholder="PlaceId of assigned place (Invalid PlaceId error? Try a different place.)" 
+   	            class="form-control" required />
+	    </div>
+	    <p>
+ 	       Find the placeId of your place 
+ 	       <a href="https://geo-devrel-javascript-samples.web.app/samples/places-placeid-finder/app/dist/">here</a>.
+	    </p>
+	    <button type="submit" class="ripple">UPLOAD</button>
+
         </form>
     </div>
 </div>
