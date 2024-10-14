@@ -72,6 +72,8 @@ app.post('/upload', function (req, res) {
 
     let latitude = req.body["lat"];
     let longitude = req.body["long"];
+    let heading = req.body["head"];
+    let placespot = req.body["place"];
 
     let key = req.cookies["oauth"]
     if (!key) {
@@ -127,7 +129,7 @@ app.post('/upload', function (req, res) {
                             })
 
                         } else {
-                            //PART 3: Set metadata!
+                            // PART 3: Set metadata!
                             let body;
                             if (req.body["lat"] && req.body["long"]) {
                                 body = JSON.stringify({
@@ -139,15 +141,18 @@ app.post('/upload', function (req, res) {
                                             "latitude": latitude,
                                             "longitude": longitude
                                         },
-                                        "heading": 0
+                                        "heading": heading
+                                    },
+                                    "places": {
+                                        "placeId": placespot
                                     }
-                                })
+                                });
                             } else {
                                 body = JSON.stringify({
                                     "uploadReference": {
                                         "uploadUrl": uploadUrl
-                                    },
-                                })
+                                    }
+                                });
                             }
 
                             const options = {
