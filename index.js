@@ -1,31 +1,21 @@
-const config = require('./config.json')
+const config = require('./config.json');
 
 const host = config.host;
 const port = config.port;
 const openWebBrowser = config.openWebBrowser; // Set to false if running as a server
 
 let full_url = "";
-let protocol = "";
-if (config.https) {
-    protocol = "https://"
-} else {
-    protocol = "http://"
-}
+let protocol = config.https ? "https://" : "http://";
 
-if (port && !config.https) {
-    full_url = protocol + host + ":" + port
-} else {
-    full_url = protocol + host
-}
-
+full_url = port && !config.https ? `${protocol}${host}:${port}` : `${protocol}${host}`;
 
 console.log("Server running on: " + full_url);
 
-// Doesn't matter what Google account holds these keys.
-const clientId = config.clientId // Client ID from Google API page
-const clientSecret = config.clientSecret // Client Secret from Google API page
+// Google API credentials
+const clientId = config.clientId; 
+const clientSecret = config.clientSecret; 
 
-// Part 1: Open web browser to login to Google account and receive access token
+// Open the browser if configured
 const open = require('open');
 if (openWebBrowser) {
     (async () => {
@@ -34,26 +24,25 @@ if (openWebBrowser) {
 }
 
 const favicon = require('serve-favicon');
-const express = require('express')
+const express = require('express');
 const bodyParser = require('body-parser');
-const cookieParser = require('cookie-parser')
+const cookieParser = require('cookie-parser');
 const upload = require("express-fileupload");
 const request = require("request");
-const app = express()
-app.use(bodyParser.urlencoded({extended: true}));
+const app = express();
+
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(
     upload({
         preserveExtension: true,
         safeFileNames: true,
-        limits: {fileSize: 75 * 1024 * 1024},
+        limits: { fileSize: 75 * 1024 * 1024 },
     })
 );
-// CSS and JS Files
+
 app.use(express.static(__dirname + '/public'));
-
 app.set('view engine', 'ejs');
-
 app.use(favicon(__dirname + '/public/assets/icons/favicon.ico'));
 
 app.get('/', function (req, res) {
@@ -62,166 +51,154 @@ app.get('/', function (req, res) {
         clientId: clientId,
         domain: config.host
     });
-})
+});
 
 app.get('/upload', function (req, res) {
     res.render('pages/upload');
-})
+});
 
 app.post('/upload', function (req, res) {
-
     let latitude = req.body["lat"];
     let longitude = req.body["long"];
     let heading = req.body["head"];
     let placespot = req.body["place"];
+    let level = req.body["lev"];
+    let levelname = req.body["levname"];
+    let key = req.cookies["oauth"];
 
-    let key = req.cookies["oauth"]
-    if (!key) {
-        return res.redirect('/')
-    } else {
-        if (!req.files) {
-            return res.status(400).render('pages/error', {
-                errorCode: 400,
-                errorStatus: "Missing File",
-                errorMessage: "Missing File",
-                response: "Error: Missing File"
-            })
+    if (!key) return res.redirect('/');
 
-        } else {
-            // Part 1: Get uploadUrl
-            const options = {
-                'method': 'POST',
-                'url': `https://streetviewpublish.googleapis.com/v1/photo:startUpload`,
-                'headers': {
-                    'Authorization': `Bearer ${key}`
-                }
-                // For authorization token, must use oauth 2.0
+    if (!req.files) {
+        return res.status(400).render('pages/error', {
+            errorCode: 400,
+            errorStatus: "Missing File",
+            errorMessage: "Missing File",
+            response: "Error: Missing File"
+        });
+    }
+
+    const options = {
+        method: 'POST',
+        url: 'https://streetviewpublish.googleapis.com/v1/photo:startUpload',
+        headers: { Authorization: `Bearer ${key}` }
+    };
+
+    request(options, function (error, response) {
+        if (error) {
+            console.log(error);
+            return res.status(500).render('pages/error', {
+                errorCode: 500,
+                errorStatus: "ERROR",
+                errorMessage: "Error with getting upload URL",
+                response: JSON.stringify(JSON.parse(response.body), null, 4)
+            });
+        }
+
+        let uploadUrl = JSON.parse(response.body)["uploadUrl"];
+
+        const uploadOptions = {
+            method: 'POST',
+            url: uploadUrl,
+            headers: { Authorization: `Bearer ${key}` },
+            body: req.files.file.data
+        };
+
+        request(uploadOptions, function (uploadError) {
+            if (uploadError) {
+                console.log(uploadError);
+                return res.status(500).render('pages/error', {
+                    errorCode: 500,
+                    errorStatus: "UPLOAD ERROR",
+                    errorMessage: "Error uploading to Google's API",
+                    response: uploadError
+                });
+            }
+
+            let metadata = {
+                uploadReference: { uploadUrl: uploadUrl }
             };
-            request(options, function (error, response) {
-                if (error) {
-                    console.log(error)
-                    res.status(500).render('pages/error', {
+
+            if (latitude && longitude) {
+                metadata.pose = {
+                    latLngPair: { latitude: latitude, longitude: longitude },
+                };
+
+                if (level || levelname) {
+                    metadata.pose.level = {};
+                    if (level) metadata.pose.level.number = level;
+                    if (levelname) metadata.pose.level.name = levelname;
+                }
+
+                if (heading) metadata.pose.heading = heading;
+            }
+
+            if (placespot) metadata.places = { placeId: placespot };
+
+            const metadataOptions = {
+                method: 'POST',
+                url: 'https://streetviewpublish.googleapis.com/v1/photo',
+                headers: {
+                    Authorization: `Bearer ${key}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(metadata)
+            };
+
+            request(metadataOptions, function (metadataError, metadataResponse) {
+                if (metadataError) {
+                    console.log(metadataError);
+                    return res.status(500).render('pages/error', {
                         errorCode: 500,
                         errorStatus: "ERROR",
-                        errorMessage: "Error: Error with getting upload url",
-                        response: JSON.stringify(JSON.parse(response.body), null, 4)
-                    })
-                } else {
-                    let uploadUrl = JSON.parse(response.body)["uploadUrl"]
-                    // PART 2: Upload the image!
-                    const options = {
-                        'method': 'POST',
-                        'url': uploadUrl,
-                        'headers': {
-                            'Authorization': `Bearer ${key}`,
-                        },
-                        body: req.files.file.data
-                    };
-                    request(options, function (error) {
-                        if (error) {
-                            console.log(error)
-
-                            res.status(500).render('pages/error', {
-                                errorCode: 500,
-                                errorStatus: "UPLOAD ERROR",
-                                errorMessage: "Error: Error with uploading file to Google's API",
-                                response: error
-                            })
-
-                        } else {
-                            // PART 3: Set metadata!
-                            let body;
-                            if (req.body["lat"] && req.body["long"]) {
-                                body = JSON.stringify({
-                                    "uploadReference": {
-                                        "uploadUrl": uploadUrl
-                                    },
-                                    "pose": {
-                                        "latLngPair": {
-                                            "latitude": latitude,
-                                            "longitude": longitude
-                                        },
-                                        "heading": heading
-                                    },
-                                    "places": {
-                                        "placeId": placespot
-                                    }
-                                });
-                            } else {
-                                body = JSON.stringify({
-                                    "uploadReference": {
-                                        "uploadUrl": uploadUrl
-                                    }
-                                });
-                            }
-
-                            const options = {
-                                'method': 'POST',
-                                'url': `https://streetviewpublish.googleapis.com/v1/photo`,
-                                'headers': {
-                                    'Authorization': `Bearer ${key}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: body
-                            };
-                            request(options, function (error, response) {
-                                if (error) {
-                                    console.log(error)
-
-                                    res.status(500).render('pages/error', {
-                                        errorCode: 500,
-                                        errorStatus: "ERROR",
-                                        errorMessage: "Error with setting metadata of file",
-                                        response: "Error: Error with setting metadata of file"
-                                    })
-
-                                } else {
-                                    if (JSON.parse(response.body)["error"]) {
-                                        res.status(500).render('pages/error', {
-                                            errorCode: JSON.parse(response.body)["error"]["code"],
-                                            errorStatus: JSON.parse(response.body)["error"]["status"],
-                                            errorMessage: JSON.parse(response.body)["error"]["message"],
-                                            response: JSON.stringify(JSON.parse(response.body), null, 4),
-                                        });
-                                    } else {
-                                        let shareLink = JSON.parse(response.body)["shareLink"]
-                                        res.status(200).render('pages/success', {
-                                            status: JSON.parse(response.body)["mapsPublishStatus"],
-                                            shareLink: shareLink,
-                                            response: JSON.stringify(JSON.parse(response.body), null, 4)
-                                        });
-                                    }
-                                }
-                            });
-                        }
+                        errorMessage: "Error setting metadata",
+                        response: metadataError
                     });
                 }
+
+                let parsedResponse = JSON.parse(metadataResponse.body);
+                if (parsedResponse.error) {
+                    return res.status(500).render('pages/error', {
+                        errorCode: parsedResponse.error.code,
+                        errorStatus: parsedResponse.error.status,
+                        errorMessage: parsedResponse.error.message,
+                        response: JSON.stringify(parsedResponse, null, 4)
+                    });
+                }
+
+                let shareLink = parsedResponse.shareLink;
+                res.status(200).render('pages/success', {
+                    status: parsedResponse.mapsPublishStatus,
+                    shareLink: shareLink,
+                    response: JSON.stringify(parsedResponse, null, 4)
+                });
             });
-        }
-    }
-})
-// We contact Google to get a temporary token that only has permission to upload PhotoSpheres.
-app.get('/auth', function (req, res) {
-    const request = require('request');
-    const options = {
-        'method': 'POST',
-        'url': `https://www.googleapis.com/oauth2/v4/token?client_id=${clientId}&client_secret=${clientSecret}&grant_type=authorization_code&code=${req.query["code"]}&redirect_uri=${full_url}/auth/&scope=https://www.googleapis.com/auth/streetviewpublish`,
-        'headers': {}
-    };
-    request(options, function (error, response) {
-        if (error) console.log(error) && res.send("Error: Check console");
-        let body = JSON.parse(response.body)
-        if (body["error"] || !body["access_token"]) {
-            res.redirect('/')
-        } else {
-            res.cookie('oauth', JSON.parse(response.body)["access_token"], {
-                maxAge: JSON.parse(response.body)["expires_in"] * 1000,
-                httpOnly: true
-            });
-            res.render('pages/upload')
-        }
+        });
     });
+});
 
-})
+app.get('/auth', function (req, res) {
+    const options = {
+        method: 'POST',
+        url: `https://www.googleapis.com/oauth2/v4/token?client_id=${clientId}&client_secret=${clientSecret}&grant_type=authorization_code&code=${req.query["code"]}&redirect_uri=${full_url}/auth/&scope=https://www.googleapis.com/auth/streetviewpublish`,
+    };
 
-app.listen(port)
+    request(options, function (error, response) {
+        if (error) {
+            console.log(error);
+            return res.send("Error: Check console");
+        }
+
+        let body = JSON.parse(response.body);
+        if (body.error || !body.access_token) {
+            return res.redirect('/');
+        }
+
+        res.cookie('oauth', body.access_token, {
+            maxAge: body.expires_in * 1000,
+            httpOnly: true
+        });
+        res.render('pages/upload');
+    });
+});
+
+app.listen(port);
